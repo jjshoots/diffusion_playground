@@ -10,6 +10,8 @@ python = "^3.10"
 torch = "^2.4.1"
 numpy = "^2.1.1"
 jj-wingman = "^0.22.2"
+torchvision = "^0.19.1"
+matplotlib = "^3.9.2"
 
 
 [tool.poetry.group.dev.dependencies]
