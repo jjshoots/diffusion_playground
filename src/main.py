@@ -1,9 +1,13 @@
 from pathlib import Path
 
+import matplotlib
 import matplotlib.pyplot as plt
 import torch
 from torch.utils.data import Dataset
 from torchvision import datasets, transforms
+
+matplotlib.use("TkAgg")
+
 
 DATA_CACHE = Path(__file__).parent.parent / "data/"
 MNIST_MEAN_VAR = (0.1307, 0.3081)
@@ -16,6 +20,7 @@ def display_tensor_image(image: torch.Tensor) -> None:
 
     # display it
     plt.imshow(image.cpu().numpy().swapaxes(0, -1))
+    plt.show()
 
 
 def get_dataset(train: bool) -> Dataset:
