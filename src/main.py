@@ -6,6 +6,7 @@ import torch
 from torch.utils.data import Dataset
 from torchvision import datasets, transforms
 
+# sudo apt install python3-tk
 matplotlib.use("TkAgg")
 
 
