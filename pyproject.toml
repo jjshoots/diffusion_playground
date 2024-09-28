@@ -12,6 +12,7 @@ numpy = "^2.1.1"
 jj-wingman = "^0.22.2"
 torchvision = "^0.19.1"
 matplotlib = "^3.9.2"
+tqdm = "^4.66.5"
 
 
 [tool.poetry.group.dev.dependencies]
