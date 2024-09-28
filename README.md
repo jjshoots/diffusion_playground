@@ -1,4 +1,4 @@
 # TODO
 
-- [] Feed timestep into model
-- [] Implement training loop
+- [ ] Feed timestep into model
+- [ ] Implement training loop
