@@ -2,7 +2,7 @@ epochs: 1000
 learning_rate: 0.001
 batch_size: 128
 
-sampling_steps: 20
+sampling_steps: 64
 
 # wingman required params
 # https://github.com/jjshoots/Wingman?tab=readme-ov-file#from-wingman-import-wingman

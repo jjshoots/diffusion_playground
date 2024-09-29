@@ -29,11 +29,11 @@ class LinearModel(nn.Module):
         self.layer = nn.Sequential(
             nn.Linear(
                 input_dim + timestep_dim + context_dim,
-                1024,
+                2048,
             ),
             nn.ReLU(),
             nn.Linear(
-                1024,
+                2048,
                 input_dim * 2,
             ),
         )
