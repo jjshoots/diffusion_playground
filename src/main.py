@@ -1,74 +1,90 @@
 from pathlib import Path
 from typing import cast
-from tqdm import tqdm
 
 import torch
-import torch.optim as opt
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 from wingman import Wingman
 
-from model import DiffusionModel
+from diffusion_model import DiffusionModel
 from utils import display_tensor_image, get_dataset
 
 
-def main() -> None:
-    wm = Wingman(Path(__file__).parent.parent / "config.yaml")
+def get_model(wm: Wingman) -> DiffusionModel:
+    # load the model
+    model = DiffusionModel(
+        input_shape=(1, 28, 28),
+        sampling_steps=wm.cfg.sampling_steps,
+        learning_rate=wm.cfg.learning_rate,
+        device=wm.device,
+        compile=False,
+    )
+    model = torch.compile(model)
+    model = cast(DiffusionModel, model)
 
+    # load in the weights
+    has_weights, _, mark_dir = wm.get_weight_files()
+    if has_weights:
+        model.load_state_dict(
+            torch.load(mark_dir / "weights.pth", map_location=wm.device),
+        )
+
+    return model
+
+
+def train(wm: Wingman) -> None:
     # load the dataset
     trainloader = DataLoader(
         get_dataset(train=True),
         batch_size=wm.cfg.batch_size,
         shuffle=True,
         pin_memory=True,
+        drop_last=True,
     )
 
-    # load the model, optimizer, loss_fn
-    model = DiffusionModel(
-        sampling_steps=wm.cfg.sampling_steps,
-    ).to(wm.device)
-    optim = opt.AdamW(
-        model.parameters(),
-        lr=wm.cfg.learning_rate,
-    )
-    loss_fn = torch.nn.MSELoss()
-
-    # compile
-    model = torch.compile(model)
-    model = cast(DiffusionModel, model)
+    # load the model
+    model = get_model(wm)
 
     # begin training
-    for epoch in range(wm.cfg.epochs):
-        for images, labels in tqdm(trainloader):
+    for epoch in tqdm(range(wm.cfg.epochs)):
+        for images, labels in trainloader:
+            # move things to device
             images = images.to(wm.device)
             labels = labels.to(wm.device)
 
-            # sample timesteps
-            ts = torch.randint(
-                low=1,
-                high=wm.cfg.sampling_steps + 1,
-                size=(len(images), 1, 1, 1),
-                device=wm.device,
-            )
-
-            # noise the images according to a schedule
-            noised_images, noises = model.forward_diffusion(images, ts)
-
-            # perform reverse diffusion
-            predicted_noises = model.predict_noise(noised_images, ts)
-
-            # loss function, zero grad, backward, step
-            loss = loss_fn(predicted_noises, noises)
-            optim.zero_grad()
-            loss.backward()
-            optim.step()
+            # update the model
+            loss = model.update(images, labels)
 
             # record and checkpoint
-            to_save, model_dir, mark_dir = wm.checkpoint(
-                loss=loss.detach().cpu().numpy(),
-                step=epoch
-            )
-            torch.save(model.state_dict(), mark_dir / "weights.pth")
+            to_save, _, mark_dir = wm.checkpoint(loss=loss, step=epoch)
+            if to_save:
+                torch.save(model.state_dict(), mark_dir / "weights.pth")
+
+
+@torch.no_grad()
+def sample(wm: Wingman) -> None:
+    # load the model
+    model = get_model(wm)
+
+    num_samples = 10
+    noised_x = torch.randn((num_samples, 1, 28, 28), device=wm.device)
+    blank_t = torch.ones((num_samples), dtype=torch.int64, device=wm.device)
+    for t in reversed(range(1, wm.cfg.sampling_steps)):
+        noised_x = model.reverse_diffusion_1_step(
+            noised_x=noised_x,
+            t=blank_t * t,
+            c=torch.arange(num_samples, device=wm.device),
+        )
+
+        display_tensor_image(noised_x.detach().view(1, -1, 28))
+
 
 
 if __name__ == "__main__":
-    main()
+    wm = Wingman(Path(__file__).parent.parent / "config.yaml")
+    if wm.cfg.mode.train:
+        train(wm)
+    elif wm.cfg.mode.sample:
+        sample(wm)
+    else:
+        print("Guess this is life now.")

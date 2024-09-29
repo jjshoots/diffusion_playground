@@ -1,45 +1,40 @@
 import torch
 from torch import nn
+from torch.nn import functional as F
 
 
-class DiffusionModel(nn.Module):
-    """DiffusionModel."""
+class LinearModel(nn.Module):
+    """A normal neural network that predicts noise mean and variance."""
 
     def __init__(
         self,
-        sampling_steps: int
+        input_dim: int,
+        timestep_dim: int,
+        context_dim: int,
     ) -> None:
-        """__init__."""
+        """__init__.
+
+        Args:
+
+        Returns:
+            None:
+        """
         super().__init__()
 
         # some constants
-        self.sampling_steps = sampling_steps
+        self.timestep_dim = timestep_dim
+        self.context_dim = context_dim
 
         # define the model
-        self.conv_layers = nn.Sequential(
-            nn.Conv2d(
-                in_channels=2,
-                out_channels=16,
-                kernel_size=5,
-                padding=2,
+        self.layer = nn.Sequential(
+            nn.Linear(
+                input_dim + timestep_dim + context_dim,
+                1024,
             ),
-            nn.Conv2d(
-                in_channels=16,
-                out_channels=32,
-                kernel_size=5,
-                padding=2,
-            ),
-            nn.Conv2d(
-                in_channels=32,
-                out_channels=16,
-                kernel_size=5,
-                padding=2,
-            ),
-            nn.Conv2d(
-                in_channels=16,
-                out_channels=2,
-                kernel_size=5,
-                padding=2,
+            nn.ReLU(),
+            nn.Linear(
+                1024,
+                input_dim * 2,
             ),
         )
 
@@ -47,116 +42,40 @@ class DiffusionModel(nn.Module):
         self,
         x: torch.Tensor,
         t: torch.Tensor,
+        c: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """forward.
 
         Args:
-            x (torch.Tensor): [..., C, H, W] input image + noise.
-            t (torch.Tensor): [..., 1] noise schedule in [0, 1].
+            x (torch.Tensor): [B, ...] clean data
+            t (torch.Tensor): [B, ...] noise step
+            c (torch.Tensor): [B, ...] contextual information
 
         Returns:
             torch.Tensor: mean of predicted noise.
             torch.Tensor: var of predicted noise.
         """
-        # append the timestep embedding
+        # record input shape
+        input_shape = x.shape
+
+        # create encodings
+        timestep_encoding = F.one_hot(t, num_classes=self.timestep_dim)
+        context_encoding= F.one_hot(c, num_classes=self.context_dim)
+
+        # concat the noise to the input
         x = torch.concat(
-            (
-                x,
-                (torch.ones_like(x) * t) - (self.sampling_steps / 2.0),
-            ),
-            dim=-3,
+            (x.view(x.shape[0], -1), timestep_encoding, context_encoding),
+            dim=-1,
         )
 
         # pass input through model
-        y = self.conv_layers(x)
+        y = self.layer(x)
 
         # split into mean, var
-        noise_mean, noise_log_var = torch.split(y, 1, dim=-3)
-        return noise_mean, noise_log_var
+        noise_mean, noise_log_var = torch.split(y, y.shape[-1] // 2, dim=-1)
+        noise_var = F.softplus(noise_log_var)
 
-    def predict_noise(
-        self,
-        x: torch.Tensor,
-        t: torch.Tensor,
-    ) -> torch.Tensor:
-        mean, log_var = self(x, t)
-        return torch.distributions.Normal(mean, torch.exp(log_var)).rsample()
-
-    def get_alpha(self, t: torch.Tensor) -> torch.Tensor:
-        """get_alpha.
-
-        Args:
-            t (torch.Tensor): [...] noise schedule in [0, 1].
-
-        Returns:
-            torch.Tensor: [...] alpha in [1, 0].
-        """
-        return self.get_cum_alpha(t) / self.get_cum_alpha(t - 1)
-
-    def get_cum_alpha(self, t: torch.Tensor) -> torch.Tensor:
-        """get_alpha.
-
-        Args:
-            t (torch.Tensor): [...] noise schedule in [0, 1].
-
-        Returns:
-            torch.Tensor: [...] alpha in [1, 0].
-        """
-        t = t.clamp(min=0.0, max=self.sampling_steps)
-        return torch.cos(torch.pi / 2.0 * t / self.sampling_steps) ** 2
-
-    def forward_diffusion(
-        self,
-        x: torch.Tensor,
-        t: torch.Tensor,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        """A forward diffusion process.
-
-        Args:
-            x (torch.Tensor): [..., C, H, W] image.
-            t (torch.Tensor): [..., 1] noise schedule in [0, 1].
-
-        Returns:
-            torch.Tensor: a noised image.
-            torch.Tensor: the noise that contributed to the forward diffusion
-        """
-        # sample an absolute noise and an alpha
-        noise = torch.randn_like(x)
-        alpha = self.get_alpha(t)
-
-        # noise the image
-        noised_x = torch.sqrt(alpha) * x + torch.sqrt(1 - alpha) * noise
-
-        return noised_x, noise
-
-    def reverse_diffusion(
-        self,
-        x: torch.Tensor,
-        t: torch.Tensor,
-    ) -> torch.Tensor:
-        """reverse_diffusion.
-
-        Args:
-            x (torch.Tensor): [..., C, H, W] image.
-            t (torch.Tensor): [..., 1] noise schedule in [0, 1].
-
-        Returns:
-            torch.Tensor: the input image minus the predicted noise at the timestep
-        """
-        # get alphas
-        alpha = self.get_alpha(t)
-        cum_alpha = self.get_cum_alpha(t)
-
-        # predict noise
-        pred_noise_mean, pred_noise_log_var = self(x, t)
-
-        # reverse the process
-        # fmt: off
-        clean_x = (
-            (1 / torch.sqrt(alpha))
-            * (x - ((1 - alpha) / torch.sqrt(1 - cum_alpha)) * pred_noise_mean)
-            + torch.randn_like(x) * torch.exp(pred_noise_log_var)
-        )
-        # fmt: on
-
-        return clean_x
+        # reshape and return
+        noise_mean = noise_mean.view(input_shape)
+        noise_var = noise_var.view(input_shape)
+        return noise_mean, noise_var

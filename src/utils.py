@@ -3,7 +3,7 @@ from pathlib import Path
 import matplotlib
 import matplotlib.pyplot as plt
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, Subset
 from torchvision import datasets, transforms
 
 # sudo apt install python3-tk
