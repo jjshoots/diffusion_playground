@@ -6,4 +6,4 @@ This work is not original, it was taken from [one of the original papers](https:
 
 ## Results
 
-![result]{./result.gif}
+![result](./result.gif)
