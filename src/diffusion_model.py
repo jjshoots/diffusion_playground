@@ -7,7 +7,6 @@ from torch import nn
 from torch.cuda import CUDAGraph
 
 from model import LinearModel
-from utils import display_tensor_image
 
 
 class DiffusionModel(nn.Module):
@@ -136,10 +135,7 @@ class DiffusionModel(nn.Module):
         return loss.mean().detach()
 
     def forward_diffusion_n_step(
-        self,
-        x: torch.Tensor,
-        t: torch.Tensor,
-        c: torch.Tensor
+        self, x: torch.Tensor, t: torch.Tensor, c: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Performs n step of forward diffusion.
 

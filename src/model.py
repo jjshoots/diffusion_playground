@@ -60,7 +60,7 @@ class LinearModel(nn.Module):
 
         # create encodings
         timestep_encoding = F.one_hot(t, num_classes=self.timestep_dim)
-        context_encoding= F.one_hot(c, num_classes=self.context_dim)
+        context_encoding = F.one_hot(c, num_classes=self.context_dim)
 
         # concat the noise to the input
         x = torch.concat(
